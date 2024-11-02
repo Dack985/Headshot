@@ -1,28 +1,44 @@
 #!/bin/bash
 
-# remove old nginx install
+# Step 1: Clean up any previous Nginx installation and processes
+echo "Removing old Nginx installation and stopping any running processes..."
 rm -rf /usr/local/nginx/
+pkill nginx || echo "No Nginx process running"
 
-# kill all nginx processes
-pkill nginx
-
-# install build dependencies
+# Step 2: Install build dependencies
+echo "Installing build dependencies..."
+apt update
 apt install -y libpcre3 libpcre3-dev zlib1g zlib1g-dev openssl libssl-dev libxslt1-dev libgd-dev libgeoip-dev
 
-# if on centos do these
-# yum install -y pcre pcre-devel zlib zlib-devel openssl openssl-devel
+# Step 3: Add the bionic-security repository and its GPG key if necessary
+if ! grep -q "bionic-security main" /etc/apt/sources.list; then
+    echo "Adding bionic-security repository to sources.list..."
+    echo "deb http://security.ubuntu.com/ubuntu bionic-security main" | sudo tee -a /etc/apt/sources.list
+fi
 
-# pull down nginx
-wget https://nginx.org/download/nginx-1.10.3.tar.gz
-tar zxf nginx-1.10.3.tar.gz
-cd nginx-1.10.3
+# Step 4: Add the missing GPG key (skip if it already exists)
+KEY_FILE="/etc/apt/trusted.gpg.d/ubuntu_bionic_security.gpg"
+if [ ! -f "$KEY_FILE" ]; then
+    echo "Adding missing GPG key for bionic-security..."
+    curl -fsSL https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x3B4FE6ACC0B21F32 | sudo gpg --dearmor -o "$KEY_FILE"
+else
+    echo "GPG key for bionic-security already exists."
+fi
 
-# add our module as a dependency
-./configure --add-module=../ --user=root --with-cc-opt='-g -O2 -fPIE -fstack-protector-strong -Wformat -Werror=format-security -Wdate-time -D_FORTIFY_SOURCE=2' --with-ld-opt='-Wl,-Bsymbolic-functions -fPIE -pie -Wl,-z,relro -Wl,-z,now' --prefix=/usr/share/nginx --conf-path=/etc/nginx/nginx.conf --http-log-path=/var/log/nginx/access.log --error-log-path=/var/log/nginx/error.log --lock-path=/var/lock/nginx.lock --pid-path=/run/nginx.pid --http-client-body-temp-path=/var/lib/nginx/body --http-fastcgi-temp-path=/var/lib/nginx/fastcgi --http-proxy-temp-path=/var/lib/nginx/proxy --http-scgi-temp-path=/var/lib/nginx/scgi --http-uwsgi-temp-path=/var/lib/nginx/uwsgi --with-debug --with-pcre-jit --with-ipv6 --with-http_ssl_module --with-http_stub_status_module --with-http_realip_module --with-http_auth_request_module --with-http_addition_module --with-http_dav_module --with-http_geoip_module --with-http_gunzip_module --with-http_gzip_static_module --with-http_image_filter_module --with-http_v2_module --with-http_sub_module --with-http_xslt_module --with-stream --with-stream_ssl_module --with-mail --with-mail_ssl_module --with-threads
+# Step 5: Update the package list and install libssl1.0-dev
+echo "Updating package lists and installing libssl1.0-dev..."
+sudo apt update
+sudo apt-get install -y libssl1.0-dev
 
-# compile and install
-make && make install
+# Step 6: Install Nginx using dpkg
+echo "Installing Nginx .deb packages..."
+sudo dpkg -i deb/*.deb
 
-# clean up
-cd ..
-rm -rf nginx-1.10.3/ nginx-1.10.3.tar.gz 
+# Step 7: Start and enable Nginx to run on boot
+echo "Starting and enabling Nginx..."
+sudo systemctl start nginx
+sudo systemctl enable nginx
+
+# Step 8: Confirm Nginx installation and service status
+echo "Nginx installation complete. Service status:"
+sudo systemctl status nginx
